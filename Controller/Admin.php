@@ -25,7 +25,14 @@ class Admin implements \FOSSBilling\InjectionAwareInterface
 
     public function register(\Box_App &$app): void
     {
+        $app->get('/supportticketattachments', 'get_index', [], static::class);
         $app->get('/supportticketattachments/download/:id', 'get_download', ['id' => '[0-9]+'], static::class);
+    }
+
+    public function get_index(\Box_App $app): string
+    {
+        $this->di['is_admin_logged'];
+        return $app->render('mod_supportticketattachments_index');
     }
 
     public function get_download(\Box_App $app, $id): void

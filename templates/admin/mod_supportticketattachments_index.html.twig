@@ -1,0 +1,19 @@
+{% extends "layout_default.html.twig" %}
+{% set active_menu = 'extensions' %}
+{% block meta_title %}{{ 'Support Ticket Attachments'|trans }}{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div class="card-header">
+        <h3 class="card-title">{{ 'Support Ticket Attachments'|trans }}</h3>
+    </div>
+    <div class="card-body">
+        <p>{{ 'This extension enables inline file and image attachments in support tickets.'|trans }}</p>
+        <p><strong>{{ 'Status:'|trans }}</strong> <span class="badge bg-success">{{ 'Active'|trans }}</span></p>
+        <hr>
+        <h5>{{ 'Configuration'|trans }}</h5>
+        <p>{{ 'This module does not require any additional configuration.'|trans }}</p>
+        <p>{{ 'To use the attachment feature, ensure the inline Javascript widget is added to your custom ticket themes.'|trans }}</p>
+    </div>
+</div>
+{% endblock %}
