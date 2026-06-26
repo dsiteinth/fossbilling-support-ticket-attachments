@@ -1,0 +1,49 @@
+name: Build and Attach Release Zip
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Build zip with FOSSBilling structure
+        run: |
+          TAG_NAME="${{ github.event.release.tag_name }}"
+          ZIP_NAME="SupportTicketAttachments-${TAG_NAME}.zip"
+          
+          # Create staging directory
+          mkdir -p staging/Supportticketattachments
+          
+          # Move files to staging, excluding theme_override, .git, .github, and README.md
+          rsync -a --exclude='staging' --exclude='.git' --exclude='.github' --exclude='theme_override' --exclude='*.zip' --exclude='README.md' --exclude='screenshot.png' ./ staging/Supportticketattachments/
+          
+          # Copy theme_override to root of staging
+          cp -r theme_override staging/
+          
+          # Copy README, LICENSE, and screenshot into the module folder
+          cp README.md staging/Supportticketattachments/
+          cp LICENSE staging/Supportticketattachments/
+          cp screenshot.png staging/Supportticketattachments/
+          
+          # Zip the staging directory
+          cd staging
+          zip -r ../$ZIP_NAME .
+          cd ..
+          
+          echo "ZIP_NAME=$ZIP_NAME" >> $GITHUB_ENV
+
+      - name: Upload zip to Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload "${{ github.event.release.tag_name }}" "${{ env.ZIP_NAME }}" --clobber
