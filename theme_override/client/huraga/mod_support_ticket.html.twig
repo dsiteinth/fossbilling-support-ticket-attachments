@@ -139,8 +139,26 @@
                                     <button class="mt-2 btn btn-primary" type="submit" id="post-reply-btn"
                                             value="{{ 'Post'|trans }}"
                                             onclick="">{{ 'Post'|trans }}</button>
-                                </form>
-                            {% include 'mod_supportticketattachments_widget.html.twig' %}
+                                </form>                                    {# ÄÄ INJECTED: Inline Upload Button ÄÄ #}
+                                    <div class="mt-3">
+                                        <button type="button" id="sta-inline-btn" title="Upload and insert an image or file into your message" style="background:#fff; border:1px solid #ced4da; padding:6px 14px; border-radius:6px; cursor:pointer; font-size:14px; font-weight:500; display:inline-flex; align-items:center; gap:8px; color:#495057; box-shadow:0 1px 2px rgba(0,0,0,0.05); transition:all 0.15s ease;">
+                                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                                                <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline>
+                                            </svg>
+                                            {{ 'Insert Image / File'|trans }}
+                                        </button>
+                                        <input type="file" id="sta-inline-input" style="display:none;" multiple accept=".jpg,.jpeg,.png,.gif,.pdf,.doc,.docx,.txt,.zip">
+                                        
+                                        <div id="sta-progress-wrap" class="sta-progress-wrap" style="display:none; margin-top:10px; max-width:100%;">
+                                            <div class="sta-progress-label" style="display:flex; justify-content:space-between; font-size:.75rem; color:#6b7280; margin-bottom:.3rem;">
+                                                <span id="sta-progress-filename"></span>
+                                                <span id="sta-progress-pct">0%</span>
+                                            </div>
+                                            <div class="sta-progress-track" style="height:6px; background:#e5e7eb; border-radius:99px; overflow:hidden;">
+                                                <div id="sta-progress-bar" class="sta-progress-bar" style="height:100%; background:#4f8ef7; border-radius:99px; transition:width .2s linear; width:0%"></div>
+                                            </div>
+                                        </div>
+                                    </div>
 </div>
                         </div>
                     {% endif %}
