@@ -7,6 +7,38 @@
 {% block head %}
     <link rel='stylesheet' type='text/css' href="{{ 'css/markdown.css' | asset_url }}">
     {{ mf.wysiwyg('.editor-textarea') }}
+    <style>
+        /* ── Progress Bar ── */
+        .sta-progress-wrap { margin-top:10px; max-width: 100%; display: none; }
+        .sta-progress-label { display:flex; justify-content:space-between; font-size:.75rem; color:#6b7280; margin-bottom:.3rem; }
+        .sta-progress-track { height:6px; background:#e5e7eb; border-radius:99px; overflow:hidden; }
+        .sta-progress-bar { height:100%; background:#4f8ef7; border-radius:99px; transition:width .2s linear; }
+
+        /* ── Toasts ── */
+        .sta-toasts { position:fixed; bottom:1.25rem; right:1.25rem; display:flex; flex-direction:column; gap:.5rem; z-index:9999; pointer-events:none; }
+        .sta-toast {
+            display:flex; align-items:center; gap:.6rem; padding:.65rem 1rem; border-radius:10px;
+            font-size:.82rem; font-weight:500; color:#fff; box-shadow:0 4px 20px rgba(0,0,0,.18);
+            pointer-events:all; animation:sta-toast-in .25s ease; max-width:320px;
+        }
+        @keyframes sta-toast-in { from { opacity:0; transform:translateY(12px); } to { opacity:1; transform:translateY(0); } }
+        .sta-toast-success { background:#22c55e; }
+        .sta-toast-error   { background:#ef4444; }
+        .sta-toast-warn    { background:#f59e0b; color:#111; }
+
+        /* ── Limit image sizes in ticket view ── */
+        .markdown-body img, .editor-textarea img, .ck-content img {
+            max-width: 100%;
+            max-height: 350px;
+            object-fit: contain;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+        .markdown-body img:hover {
+            transform: scale(1.02);
+        }
+    </style>
 {% endblock %}
 
 {% block body_class %}support-ticket{% endblock %}
@@ -126,7 +158,7 @@
                                     <button class="mt-2 btn btn-primary" type="submit" id="post-reply-btn"
                                             value="{{ 'Post'|trans }}"
                                             onclick="">{{ 'Post'|trans }}</button>
-                                </form>                                    {# �� INJECTED: Inline Upload Button �� #}
+                                </form>
                                     <div class="mt-3">
                                         <button type="button" id="sta-inline-btn" title="Upload and insert an image or file into your message" style="background:#fff; border:1px solid #ced4da; padding:6px 14px; border-radius:6px; cursor:pointer; font-size:14px; font-weight:500; display:inline-flex; align-items:center; gap:8px; color:#495057; box-shadow:0 1px 2px rgba(0,0,0,0.05); transition:all 0.15s ease;">
                                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
@@ -220,7 +252,209 @@
                     loader.style.display = 'none';
                 }
             }
+
+            // ==========================================
+            // Support Ticket Attachments Inline Logic
+            // ==========================================
+            const TICKET_ID = {{ ticket.id | default(0) | json_encode }};
+            const API_BASE = '/api/client/supportticketattachments';
+            const btn = document.getElementById('sta-inline-btn');
+            const input = document.getElementById('sta-inline-input');
+            const progWrap = document.getElementById('sta-progress-wrap');
+            const progBar = document.getElementById('sta-progress-bar');
+            const progPct = document.getElementById('sta-progress-pct');
+            const progName = document.getElementById('sta-progress-filename');
+
+            if (!btn || !input) return;
+
+            // Toasts container setup
+            const toastCont = document.createElement('div');
+            toastCont.className = 'sta-toasts';
+            document.body.appendChild(toastCont);
+
+            function showToast(msg, type = 'success') {
+                const el = document.createElement('div');
+                el.className = `sta-toast sta-toast-${type}`;
+                el.innerHTML = `<span>${msg}</span>`;
+                toastCont.appendChild(el);
+                setTimeout(() => {
+                    el.style.opacity = '0';
+                    el.style.transition = 'opacity .3s';
+                    setTimeout(() => el.remove(), 300);
+                }, 4000);
+            }
+
+            function getCsrfToken() {
+                if (typeof FOSSBilling !== 'undefined' && FOSSBilling.CSRFToken) return FOSSBilling.CSRFToken;
+                const value = `; ${document.cookie}`;
+                let parts = value.split(`; CSRFToken=`);
+                if (parts.length === 2) return parts.pop().split(';').shift();
+                parts = value.split(`; csrf_token=`);
+                if (parts.length === 2) return parts.pop().split(';').shift();
+                return '';
+            }
+
+            function setProgress(pct, name) {
+                if (pct === null) {
+                    progWrap.style.display = 'none';
+                } else {
+                    progWrap.style.display = 'block';
+                    progBar.style.width = pct + '%';
+                    progPct.textContent = pct + '%';
+                    progName.textContent = name || '';
+                }
+            }
+
+            btn.addEventListener('click', () => input.click());
+            btn.addEventListener('mouseenter', () => btn.style.borderColor = '#4f8ef7');
+            btn.addEventListener('mouseleave', () => btn.style.borderColor = '#ced4da');
+
+            const ALLOWED_EXT = ['jpg','jpeg','png','gif','pdf','doc','docx','txt','zip'];
+            const MAX_BYTES = 5 * 1024 * 1024;
+
+            input.addEventListener('change', () => {
+                if (!input.files?.length) return;
+                Array.from(input.files).forEach(file => {
+                    const ext = file.name.split('.').pop().toLowerCase();
+                    if (!ALLOWED_EXT.includes(ext)) {
+                        showToast(`"${file.name}" — file type not allowed.`, 'error');
+                        return;
+                    }
+                    if (file.size > MAX_BYTES) {
+                        showToast(`"${file.name}" — file is too large.`, 'error');
+                        return;
+                    }
+                    uploadFile(file);
+                });
+                input.value = '';
+            });
+
+            function uploadFile(file) {
+                setProgress(0, file.name);
+                const fd = new FormData();
+                fd.append('ticket_id', TICKET_ID);
+                fd.append('CSRFToken', getCsrfToken());
+                fd.append('file', file);
+
+                const xhr = new XMLHttpRequest();
+                xhr.open('POST', API_BASE + '/upload', true);
+                xhr.setRequestHeader('X-CSRF-Token', getCsrfToken());
+
+                xhr.upload.addEventListener('progress', e => {
+                    if (e.lengthComputable) setProgress(Math.round((e.loaded / e.total) * 100), file.name);
+                });
+
+                xhr.addEventListener('load', () => {
+                    setProgress(null);
+                    try {
+                        const res = JSON.parse(xhr.responseText);
+                        if (res.result) {
+                            insertIntoEditor(res.result);
+                            showToast('Inserted!', 'success');
+                        } else {
+                            showToast(res.error?.message || 'Upload failed.', 'error');
+                        }
+                    } catch {
+                        showToast('Upload failed.', 'error');
+                    }
+                });
+
+                xhr.addEventListener('error', () => {
+                    setProgress(null);
+                    showToast('Network error.', 'error');
+                });
+
+                xhr.withCredentials = true;
+                xhr.send(fd);
+            }
+
+            function insertIntoEditor(att) {
+                const url = window.location.origin + '/supportticketattachments/download/' + att.id;
+                const isImage = att.mime_type && att.mime_type.startsWith('image/');
+                
+                let insertHTML;
+                let insertMarkdown;
+
+                if (isImage) {
+                    insertHTML = `<a href="${url}" target="_blank" title="Click to view full image"><img src="${url}" alt="${att.original_filename}" style="max-width:100%; max-height:350px; border-radius:6px; margin: 10px 0; border:1px solid #dee2e6;" /></a>`;
+                    insertMarkdown = `\n\n[![${att.original_filename}](${url})](${url})\n\n`;
+                } else {
+                    insertHTML = `<a href="${url}" target="_blank">📎 ${att.original_filename}</a>`;
+                    insertMarkdown = `\n\n[📎 ${att.original_filename}](${url})\n\n`;
+                }
+
+                const ticketReplyTextArea = document.getElementById('ticket-reply-text');
+                
+                if (ticketReplyTextArea.editor) {
+                    try {
+                        const editor = ticketReplyTextArea.editor;
+                        editor.model.change(writer => {
+                            if (isImage) {
+                                try {
+                                    const imageElement = writer.createElement('imageBlock', { src: url, linkHref: url });
+                                    editor.model.insertContent(imageElement);
+                                } catch(e) {
+                                    try {
+                                        const imageElement = writer.createElement('imageInline', { src: url, linkHref: url });
+                                        editor.model.insertContent(imageElement);
+                                    } catch(e2) {
+                                        // Fallback
+                                    }
+                                }
+                            } else {
+                                const text = writer.createText('📎 ' + att.original_filename, { linkHref: url });
+                                editor.model.insertContent(text);
+                            }
+                        });
+                        return;
+                    } catch (e) {
+                        try {
+                            ticketReplyTextArea.editor.setData(ticketReplyTextArea.editor.getData() + '<p>' + insertHTML + '</p>');
+                            return;
+                        } catch(e2) {}
+                    }
+                }
+
+                if (window.jQuery && jQuery(ticketReplyTextArea).data('summernote')) {
+                    jQuery(ticketReplyTextArea).summernote('pasteHTML', insertHTML);
+                    return;
+                }
+
+                if (window.jQuery && jQuery(ticketReplyTextArea).data('trumbowyg')) {
+                    const currentHtml = jQuery(ticketReplyTextArea).trumbowyg('html');
+                    jQuery(ticketReplyTextArea).trumbowyg('html', currentHtml + '<p>' + insertHTML + '</p>');
+                    return;
+                }
+
+                if (typeof SimpleMDE !== 'undefined' && ticketReplyTextArea.simplemde) {
+                    const smde = ticketReplyTextArea.simplemde;
+                    const pos = smde.codemirror.getCursor();
+                    smde.codemirror.setSelection(pos, pos);
+                    smde.codemirror.replaceSelection(insertMarkdown);
+                    return;
+                }
+
+                const startPos = ticketReplyTextArea.selectionStart;
+                const endPos = ticketReplyTextArea.selectionEnd;
+                ticketReplyTextArea.value = ticketReplyTextArea.value.substring(0, startPos)
+                    + insertMarkdown
+                    + ticketReplyTextArea.value.substring(endPos, ticketReplyTextArea.value.length);
+                
+                ticketReplyTextArea.dispatchEvent(new Event('input', { bubbles: true }));
+                ticketReplyTextArea.dispatchEvent(new Event('change', { bubbles: true }));
+            }
+
+            // Global image click listener
+            document.addEventListener('click', function(e) {
+                if (e.target.tagName === 'IMG') {
+                    const isTicketImage = e.target.closest('article[id^="message-"]');
+                    if (isTicketImage) {
+                        if (!e.target.closest('a')) {
+                            window.open(e.target.src, '_blank');
+                        }
+                    }
+                }
+            });
         });
     </script>
 {% endblock %}
-

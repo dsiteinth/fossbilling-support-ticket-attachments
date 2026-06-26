@@ -3,9 +3,9 @@
     "type": "mod",
     "name": "Support Ticket Attachments",
     "description": "Seamless inline image and file attachments for support tickets (Client & Admin).",
-    "homepage": "https://github.com/your-username/fossbilling-ticket-attachments",
+    "homepage": "https://github.com/dsiteinth/fossbilling-support-ticket-attachments",
     "author": "DSITE.IN.TH",
     "author_url": "https://dsite.in.th",
-    "version": "1.0.2",
+    "version": "1.1.0",
     "icon_url": ""
 }
